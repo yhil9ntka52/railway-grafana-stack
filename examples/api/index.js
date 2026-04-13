@@ -1,31 +1,40 @@
-import express from 'express';
-import promMiddleware from 'express-prometheus-middleware';
-import { trace } from "@opentelemetry/api";
-
-import { logger } from './logger.js';
-import './tracer.js';
-
+const express = require('express');
+const axios = require('axios');
+const client = require('prom-client');
 
 const app = express();
-const PORT = process.env.PORT || 9091;
+const port = 9091;
 
-app.use(promMiddleware({
-  metricsPath: '/metrics',
-  collectDefaultMetrics: true,
-  requestDurationBuckets: [0.1, 0.5, 1, 1.5],
-}));
+// Створюємо реєстр для метрик
+const register = new client.Registry();
 
-// this creates custom spans to be sent to tempo
-const tracer = trace.getTracer(process.env.TEMPO_SERVICE_NAME || 'unknown')
-
-app.get('/hello', (req, res) => {
-  const span = tracer.startSpan("parse json");
-  logger.info('Request to hello endpoint v2');
-  const { name = 'Anon' } = req.query;
-  res.json({ message: `Hello, ${name}!` });
-  span.end();
+// Створюємо метрику для ціни Solana
+const solPriceGauge = new client.Gauge({
+  name: 'solana_price_usd',
+  help: 'Current price of SOL/USDT from Binance'
 });
 
-app.listen(PORT, () => {
-  console.log(`Example api is listening on http://localhost:${PORT}`);
+register.registerMetric(solPriceGauge);
+
+async function updateSolPrice() {
+  try {
+    const response = await axios.get('https://api.binance.com/api/v3/ticker/price?symbol=SOLUSDT');
+    const price = parseFloat(response.data.price);
+    solPriceGauge.set(price);
+    console.log(`SOL Price updated: ${price}`);
+  } catch (error) {
+    console.error('Error fetching price:', error.message);
+  }
+}
+
+setInterval(updateSolPrice, 15000);
+updateSolPrice();
+
+app.get('/metrics', async (req, res) => {
+  res.set('Content-Type', register.contentType);
+  res.end(await register.metrics());
+});
+
+app.listen(port, () => {
+  console.log(`SOL Exporter listening at http://localhost:${port}/metrics`);
 });
