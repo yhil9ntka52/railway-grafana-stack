@@ -2,8 +2,8 @@ global:
   scrape_interval: 15s
 
 scrape_configs:
-  - job_name: 'nodejs-app'
-    metrics_path: '/actuator/prometheus'
-    scheme: https
+  - job_name: 'solana-exporter'
+    metrics_path: '/metrics'
+    scheme: http
     static_configs:
-      - targets: ['home-task-5-production-63e8.up.railway.app']
+      - targets: ['example_api:9091']
